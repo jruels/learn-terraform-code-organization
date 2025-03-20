@@ -26,6 +26,18 @@ resource "aws_s3_bucket" "dev" {
   force_destroy = true
 }
 
+resource "aws_s3_bucket_cors_configuration" "s3_bucket" {
+  bucket = aws_s3_bucket.s3_bucket.id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["GET", "HEAD"]
+    allowed_origins = ["*"]
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3000
+  }
+}
+
 resource "aws_s3_bucket_website_configuration" "dev" {
   bucket = aws_s3_bucket.dev.id
 
@@ -44,26 +56,46 @@ resource "aws_s3_bucket_acl" "dev" {
   acl = "public-read"
 }
 
-resource "aws_s3_bucket_policy" "dev" {
-  bucket = aws_s3_bucket.dev.id
-  policy = <<EOF
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Sid": "PublicReadGetObject",
-            "Effect": "Allow",
-            "Principal": "*",
-            "Action": [
-                "s3:GetObject"
-            ],
-            "Resource": [
-                "arn:aws:s3:::${aws_s3_bucket.dev.id}/*"
-            ]
-        }
-    ]
+resource "aws_s3_bucket_ownership_controls" "s3_bucket_acl_ownership" {
+  bucket = aws_s3_bucket.s3_bucket.id
+  rule {
+    object_ownership = "BucketOwnerPreferred"
+  }
+  depends_on = [aws_s3_bucket_public_access_block.example]
 }
-EOF
+
+resource "aws_iam_user" "s3_bucket" {
+  name = "s3-bucket"
+}
+
+resource "aws_s3_bucket_public_access_block" "example" {
+  bucket = aws_s3_bucket.s3_bucket.id
+
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
+}
+
+resource "aws_s3_bucket_policy" "s3_bucket" {
+  bucket = aws_s3_bucket.s3_bucket.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "PublicReadGetObject"
+        Effect    = "Allow"
+        Principal = "*"
+        Action    = "s3:GetObject"
+        Resource = [
+          aws_s3_bucket.s3_bucket.arn,
+          "${aws_s3_bucket.s3_bucket.arn}/*",
+        ]
+      },
+    ]
+  })
+  depends_on = [aws_s3_bucket_public_access_block.example]
 }
 
 resource "aws_s3_object" "dev" {
